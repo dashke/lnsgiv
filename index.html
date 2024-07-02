@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local NS Game Info Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+            color: #333;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        body.dark-mode {
+            background-color: #181818;
+            color: #f0f0f0;
+        }
+        .game {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #fff;
+            cursor: pointer;
+            transition: transform 0.2s, background-color 0.3s, border-color 0.3s;
+            width: calc(33.333% - 20px);
+            box-sizing: border-box;
+            position: relative;
+        }
+        .game.dark-mode {
+            background-color: #333;
+            border-color: #555;
+        }
+        .game:hover {
+            transform: scale(1.05);
+        }
+        .game h2 {
+            margin: 0 0 10px;
+            color: inherit;
+        }
+        .game .rating {
+            color: #ff6600;
+            font-weight: bold;
+        }
+        .game .details {
+            display: none;
+            margin-top: 10px;
+        }
+        .game img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .filter-section {
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filter-section label {
+            margin-right: 10px;
+        }
+        .filter-section input, .filter-section select {
+            margin-right: 10px;
+        }
+        .screenshots img {
+            max-width: 100px;
+            height: auto;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+        }
+        #games {
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .toggle-dark-mode {
+            margin-left: auto;
+            cursor: pointer;
+            padding: 10px;
+            background-color: transparent;
+            border: none;
+            font-size: 24px;
+        }
+        .tag {
+            padding: 5px 10px;
+            background-color: #007bff;
+            color: #fff;
+            border-radius: 5px;
+            margin: 5px;
+            cursor: pointer;
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+        .tag:hover {
+            background-color: #0056b3;
+        }
+        .count {
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        .url-icon {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #007bff;
+            color: #fff;
+            border-radius: 50%;
+            padding: 10px;
+            text-decoration: none;
+            font-size: 20px;
+        }
+        .url-icon:hover {
+            background-color: #0056b3;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .header .project-title {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .header .creator {
+            font-size: 14px;
+            color: #777;
+        }
+        .header .github-link {
+            font-size: 24px;
+            color: #333;
+            text-decoration: none;
+            margin-left: 10px;
+        }
+        .header .github-link:hover {
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <div class="project-title">Local NS Game Info Viewer</div>
+            <div class="creator">Created by Dashke</div>
+        </div>
+        <button class="toggle-dark-mode" onclick="toggleDarkMode()">🌙</button>
+    </div>
+    <div class="filter-section">
+        <label for="file-input">Select JSON File:</label>
+        <input type="file" id="file-input" accept=".json">
+    </div>
+    <div class="filter-section">
+        <label for="rating-filter-min">Minimum Rating:</label>
+        <input type="number" id="rating-filter-min" step="0.01" min="0" max="100" value="0">
+        <label for="rating-filter-max">Maximum Rating:</label>
+        <input type="number" id="rating-filter-max" step="0.01" min="0" max="100" value="100">
+        <label for="tag-filter">Tags:</label>
+        <input type="text" id="tag-filter" placeholder="Comma separated tags">
+        <label for="title-filter">Title:</label>
+        <input type="text" id="title-filter" placeholder="Search by title">
+        <label for="na-filter">Include N/A games:</label>
+        <input type="checkbox" id="na-filter">
+        <button onclick="filterGames()">Filter</button>
+        <button onclick="clearFilters()">Clear Filters</button>
+    </div>
+    <div class="filter-section" id="tag-buttons"></div>
+    <div id="games-count"></div>
+    <div id="games"></div>
+
+    <script>
+        let gameData = null;
+        let allTags = new Map();
+        let darkModeEnabled = false;
+
+        const platformNames = {
+            6: 'PC (Microsoft Windows)',
+            48: 'PlayStation 4',
+            49: 'Xbox One',
+            130: 'Nintendo Switch',
+            167: 'PlayStation 5',
+            // Add more platforms as needed
+        };
+
+        const genreNames = {
+            2: 'Point-and-click',
+            4: 'Fighting',
+            5: 'Shooter',
+            7: 'Music',
+            8: 'Platform',
+            9: 'Puzzle',
+            10: 'Racing',
+            11: 'Real Time Strategy (RTS)',
+            12: 'Role-playing (RPG)',
+            13: 'Simulator',
+            14: 'Sport',
+            15: 'Strategy',
+            16: 'Turn-based strategy (TBS)',
+            24: 'Tactical',
+            25: 'Hack and slash/Beat \'em up',
+            26: 'Quiz/Trivia',
+            30: 'Pinball',
+            31: 'Adventure',
+            32: 'Indie',
+            33: 'Arcade',
+            34: 'Visual Novel',
+            35: 'Card & Board Game',
+            36: 'MOBA',
+            // Add more genres as needed
+        };
+
+        document.getElementById('file-input').addEventListener('change', handleFileSelect, false);
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        gameData = JSON.parse(e.target.result);
+                        console.log('Loaded game data:', gameData);
+                        extractTags(gameData);
+                        displayGames(gameData);
+                    } catch (error) {
+                        console.error('Error parsing JSON:', error);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        function extractTags(data) {
+            allTags.clear();
+            data.forEach(gameData => {
+                for (const gameName in gameData) {
+                    const game = gameData[gameName][0];
+                    if (game.genres) {
+                        game.genres.forEach(genre => {
+                            const genreName = genreNames[genre] || genre;
+                            if (allTags.has(genreName)) {
+                                allTags.set(genreName, allTags.get(genreName) + 1);
+                            } else {
+                                allTags.set(genreName, 1);
+                            }
+                        });
+                    }
+                }
+            });
+            displayTagButtons();
+        }
+
+        function displayTagButtons() {
+            const tagButtonsContainer = document.getElementById('tag-buttons');
+            tagButtonsContainer.innerHTML = '';
+            allTags.forEach((count, tag) => {
+                const tagButton = document.createElement('span');
+                tagButton.textContent = `${tag} (${count})`;
+                tagButton.classList.add('tag');
+                tagButton.addEventListener('click', () => {
+                    const tagFilter = document.getElementById('tag-filter');
+                    const currentTags = tagFilter.value.split(',').map(tag => tag.trim()).filter(tag => tag);
+                    if (!currentTags.includes(tag)) {
+                        currentTags.push(tag);
+                        tagFilter.value = currentTags.join(', ');
+                    }
+                });
+                tagButtonsContainer.appendChild(tagButton);
+            });
+        }
+
+        function displayGames(data) {
+            const gamesContainer = document.getElementById('games');
+            const gamesCount = document.getElementById('games-count');
+            gamesContainer.innerHTML = '';
+
+            if (!data) {
+                const errorMessage = document.createElement('p');
+                errorMessage.textContent = 'No data available.';
+                gamesContainer.appendChild(errorMessage);
+                return;
+            }
+
+            let count = 0;
+            const gamesArray = [];
+            data.forEach(gameData => {
+                for (const gameName in gameData) {
+                    const game = gameData[gameName][0];
+                    gamesArray.push(game);
+                }
+            });
+
+            // Sort games alphabetically by name
+            gamesArray.sort((a, b) => a.name.localeCompare(b.name));
+
+            gamesArray.forEach(game => {
+                console.log('Processing game:', game);
+
+                const gameDiv = document.createElement('div');
+                gameDiv.classList.add('game');
+                if (darkModeEnabled) {
+                    gameDiv.classList.add('dark-mode');
+                }
+
+                if (game.cover) {
+                    const gameImage = document.createElement('img');
+                    gameImage.src = `images/${game.cover}.jpg`;
+                    gameDiv.appendChild(gameImage);
+                }
+
+                const gameTitle = document.createElement('h2');
+                gameTitle.textContent = game.name;
+                gameDiv.appendChild(gameTitle);
+
+                const gameRating = document.createElement('p');
+                gameRating.classList.add('rating');
+                gameRating.textContent = `Rating: ${game.rating ? game.rating.toFixed(2) : 'N/A'} (based on ${game.rating_count ? game.rating_count : 0} reviews)`;
+                gameDiv.appendChild(gameRating);
+
+                const gameTotalRating = document.createElement('p');
+                gameTotalRating.classList.add('rating');
+                gameTotalRating.textContent = `Total Rating: ${game.total_rating ? game.total_rating.toFixed(2) : 'N/A'} (based on ${game.total_rating_count ? game.total_rating_count : 0} reviews)`;
+                gameDiv.appendChild(gameTotalRating);
+
+                const gameDetails = document.createElement('div');
+                gameDetails.classList.add('details');
+
+                const gameSummary = document.createElement('p');
+                gameSummary.textContent = game.summary;
+                gameDetails.appendChild(gameSummary);
+
+                const gameGenres = document.createElement('p');
+                gameGenres.textContent = `Genres: ${game.genres ? game.genres.map(id => genreNames[id] || id).join(', ') : 'N/A'}`;
+                gameDetails.appendChild(gameGenres);
+
+                const gamePlatforms = document.createElement('p');
+                gamePlatforms.textContent = `Platforms: ${game.platforms ? game.platforms.map(id => platformNames[id] || id).join(', ') : 'N/A'}`;
+                gameDetails.appendChild(gamePlatforms);
+
+                if (game.url) {
+                    const urlIcon = document.createElement('a');
+                    urlIcon.href = game.url;
+                    urlIcon.target = '_blank';
+                    urlIcon.classList.add('url-icon');
+                    urlIcon.innerHTML = '🔗';
+                    gameDiv.appendChild(urlIcon);
+                }
+
+                if (game.screenshots && game.screenshots.length > 0) {
+                    const screenshotsDiv = document.createElement('div');
+                    screenshotsDiv.classList.add('screenshots');
+                    game.screenshots.forEach(screenshot => {
+                        const screenshotImage = document.createElement('img');
+                        screenshotImage.src = `images/${screenshot}.jpg`;
+                        screenshotsDiv.appendChild(screenshotImage);
+                    });
+                    gameDetails.appendChild(screenshotsDiv);
+                }
+
+                gameDiv.appendChild(gameDetails);
+                gamesContainer.appendChild(gameDiv);
+
+                gameDiv.addEventListener('click', () => {
+                    gameDetails.style.display = gameDetails.style.display === 'none' ? 'block' : 'none';
+                });
+
+                count++;
+            });
+
+            gamesCount.textContent = `Total games loaded: ${count}`;
+        }
+
+        function filterGames() {
+            const minRating = parseFloat(document.getElementById('rating-filter-min').value);
+            const maxRating = parseFloat(document.getElementById('rating-filter-max').value);
+            const tags = document.getElementById('tag-filter').value.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag);
+            const title = document.getElementById('title-filter').value.trim().toLowerCase();
+            const naFilter = document.getElementById('na-filter').checked;
+
+            if (!gameData) {
+                console.error('No data available to filter');
+                return;
+            }
+            
+            const filteredData = gameData.filter(gameData => {
+                for (const gameName in gameData) {
+                    const game = gameData[gameName][0];
+
+                    const hasValidRating = (
+                        (game.rating && game.rating >= minRating && game.rating <= maxRating) || 
+                        (game.total_rating && game.total_rating >= minRating && game.total_rating <= maxRating)
+                    );
+                    const hasTags = tags.length === 0 || (game.genres && tags.some(tag => game.genres.map(genreId => genreNames[genreId].toLowerCase()).includes(tag)));
+                    const hasTitle = title === '' || game.name.toLowerCase().includes(title);
+                    const isNaGame = !game.rating && !game.total_rating;
+
+                    if (naFilter) {
+                        if (isNaGame || hasValidRating && hasTags && hasTitle) return true;
+                    } else {
+                        if (hasValidRating && hasTags && hasTitle) return true;
+                    }
+                }
+                return false;
+            });
+            displayGames(filteredData);
+        }
+
+        function clearFilters() {
+            document.getElementById('rating-filter-min').value = 0;
+            document.getElementById('rating-filter-max').value = 100;
+            document.getElementById('tag-filter').value = '';
+            document.getElementById('title-filter').value = '';
+            document.getElementById('na-filter').checked = false;
+            displayGames(gameData);
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            darkModeEnabled = !darkModeEnabled;
+            document.querySelector('.toggle-dark-mode').textContent = darkModeEnabled ? '🌞' : '🌙';
+            document.querySelectorAll('.game').forEach(game => game.classList.toggle('dark-mode'));
+        }
+
+        window.onload = function() {
+            document.querySelector('.filter-section').style.display = 'block';
+        };
+    </script>
+</body>
+</html>
